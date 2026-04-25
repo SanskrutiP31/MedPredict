@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>MedPredict – Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <div class="header-logo">
+      <div class="logo-mark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <rect x="10" y="3" width="4" height="18" rx="2" fill="white"/>
+          <rect x="3" y="10" width="18" height="4" rx="2" fill="white"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="header-title">MedPredict</h1>
+        <p class="header-subtitle">Analytics Dashboard</p>
+      </div>
+    </div>
+    <a href="/" class="dash-link">← New Assessment</a>
+  </div>
+</header>
+
+<main class="main">
+  <!-- STAT CARDS -->
+  <div class="stat-grid" id="statGrid">
+    <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-val" id="statTotal">—</div><div class="stat-label">Total Diagnoses</div></div>
+    <div class="stat-card"><div class="stat-icon">⚠</div><div class="stat-val" id="statHighRisk">—</div><div class="stat-label">High Risk Cases %</div></div>
+    <div class="stat-card"><div class="stat-icon">🦠</div><div class="stat-val" id="statTopDisease">—</div><div class="stat-label">Most Common Disease</div></div>
+    <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-val" id="statToday">—</div><div class="stat-label">Today's Diagnoses</div></div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="results-grid-2" style="margin-bottom:1.25rem">
+    <div class="rcard">
+      <div class="rcard-header"><span class="rcard-icon">🦠</span><span class="rcard-title">Disease Distribution</span></div>
+      <div class="chart-wrap"><canvas id="diseaseDistChart"></canvas></div>
+    </div>
+    <div class="rcard">
+      <div class="rcard-header"><span class="rcard-icon">⚠</span><span class="rcard-title">Risk Level Distribution</span></div>
+      <div class="chart-wrap"><canvas id="riskDistChart"></canvas></div>
+    </div>
+  </div>
+  <div class="results-grid-2" style="margin-bottom:1.25rem">
+    <div class="rcard">
+      <div class="rcard-header"><span class="rcard-icon">📅</span><span class="rcard-title">Daily Diagnoses (Last 7 Days)</span></div>
+      <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
+    </div>
+    <div class="rcard">
+      <div class="rcard-header"><span class="rcard-icon">🔬</span><span class="rcard-title">Top Symptoms</span></div>
+      <div class="chart-wrap"><canvas id="symptomsChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- PATIENT HISTORY TABLE -->
+  <div class="rcard">
+    <div class="rcard-header">
+      <span class="rcard-icon">📋</span><span class="rcard-title">Patient History</span>
+      <div style="margin-left:auto;display:flex;gap:0.5rem;align-items:center">
+        <input type="text" id="searchInput" class="sym-search" placeholder="Search name / disease..." style="width:220px;border:1.5px solid var(--border);border-radius:8px;padding:0.4rem 0.75rem"/>
+        <button class="btn-next" style="padding:0.4rem 1rem;font-size:0.82rem" onclick="loadRecords()">Search</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="records-table" id="recordsTable">
+        <thead>
+          <tr><th>#</th><th>Name</th><th>Age</th><th>Date</th><th>Diagnosis</th><th>Confidence</th><th>Risk</th><th>Health</th></tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+      <div id="noRecords" class="no-records hidden">No records found.</div>
+    </div>
+  </div>
+</main>
+<footer class="footer"></footer>
+<script>
+async function loadAnalytics() {
+  try {
+    const res = await fetch('/analytics');
+    const d = await res.json();
+    document.getElementById('statTotal').textContent = d.total || 0;
+    document.getElementById('statHighRisk').textContent = (d.high_risk_pct || 0) + '%';
+    const topD = Object.entries(d.diseases || {}).sort((a,b)=>b[1]-a[1])[0];
+    document.getElementById('statTopDisease').textContent = topD ? topD[0].replace(/_/g,' ') : '—';
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('statToday').textContent = (d.daily || {})[today] || 0;
+
+    // Disease chart
+    const dKeys = Object.keys(d.diseases||{}).slice(0,8);
+    const dVals = dKeys.map(k=>d.diseases[k]);
+    new Chart(document.getElementById('diseaseDistChart'), {
+      type:'bar', data:{labels:dKeys.map(k=>k.replace(/_/g,' ')),
+        datasets:[{data:dVals,backgroundColor:'rgba(37,99,235,0.75)',borderRadius:6}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true},x:{ticks:{color:'#64748b'}}},responsive:true,maintainAspectRatio:false}
+    });
+
+    // Risk chart
+    const rKeys = Object.keys(d.risks||{});
+    const rVals = rKeys.map(k=>d.risks[k]);
+    const rColors = {Low:'#10b981',Moderate:'#f59e0b',High:'#ef4444',Critical:'#7c3aed'};
+    new Chart(document.getElementById('riskDistChart'), {
+      type:'doughnut', data:{labels:rKeys,
+        datasets:[{data:rVals,backgroundColor:rKeys.map(k=>rColors[k]||'#94a3b8'),borderWidth:2}]},
+      options:{plugins:{legend:{position:'bottom'}},responsive:true,maintainAspectRatio:false}
+    });
+
+    // Daily chart
+    const days = Object.keys(d.daily||{});
+    const dayCounts = days.map(k=>d.daily[k]);
+    new Chart(document.getElementById('dailyChart'), {
+      type:'line', data:{labels:days,
+        datasets:[{data:dayCounts,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.1)',fill:true,tension:0.4,pointRadius:4}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}},responsive:true,maintainAspectRatio:false}
+    });
+
+    // Symptoms chart
+    const sKeys = Object.keys(d.symptoms||{}).slice(0,8);
+    const sVals = sKeys.map(k=>d.symptoms[k]);
+    new Chart(document.getElementById('symptomsChart'), {
+      type:'bar', data:{labels:sKeys.map(k=>k.replace(/_/g,' ')),
+        datasets:[{data:sVals,backgroundColor:'rgba(124,58,237,0.75)',borderRadius:6}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}},responsive:true,maintainAspectRatio:false}
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function loadRecords() {
+  const q = document.getElementById('searchInput').value;
+  try {
+    const res = await fetch('/records?search=' + encodeURIComponent(q));
+    const records = await res.json();
+    const tbody = document.getElementById('recordsBody');
+    tbody.innerHTML = '';
+    if (!records.length) {
+      document.getElementById('noRecords').classList.remove('hidden');
+      return;
+    }
+    document.getElementById('noRecords').classList.add('hidden');
+    const riskColors = {Low:'#10b981',Moderate:'#f59e0b',High:'#ef4444',Critical:'#7c3aed'};
+    records.forEach((r,i) => {
+      const tr = document.createElement('tr');
+      const date = r.timestamp ? new Date(r.timestamp).toLocaleDateString() : '—';
+      const risk = r.risk_level || '—';
+      tr.innerHTML = `<td>${i+1}</td><td>${r.name||'—'}</td><td>${r.age||'—'}</td><td>${date}</td>
+        <td>${(r.primary_diagnosis||'—').replace(/_/g,' ')}</td>
+        <td>${r.confidence||'—'}%</td>
+        <td><span class="risk-badge" style="background:${riskColors[risk]||'#94a3b8'}20;color:${riskColors[risk]||'#64748b'}">${risk}</span></td>
+        <td>${r.health_score||'—'}/100</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) { console.error(e); }
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => { if(e.key==='Enter') loadRecords(); });
+loadAnalytics();
+loadRecords();
+</script>
+</body>
+</html>
